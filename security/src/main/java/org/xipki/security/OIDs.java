@@ -1014,19 +1014,19 @@ public class OIDs {
         initOid("1.3.6.1.4.1.311.25.2.1", "Microsoft-ObjectSID");
 
     // OIDs defined in Chinese GM/T 0015-2023
-    private static final String id_gmt0012_ext = "1.2.156.10260.4";
+    private static final String id_gmt0015_ext = "1.2.156.10260.4";
 
     public static final ASN1ObjectIdentifier id_cn_residentIdCardNumber =
-        initOid(id_gmt0012_ext + ".1.1.1", "CN-ResidentIdCardNumber");
+        initOid(id_gmt0015_ext + ".1.1.1", "CN-ResidentIdCardNumber");
 
     public static final ASN1ObjectIdentifier id_cn_passportNumber =
-        initOid(id_gmt0012_ext + ".1.1.2", "CN-PassportNumber");
+        initOid(id_gmt0015_ext + ".1.1.2", "CN-PassportNumber");
 
     public static final ASN1ObjectIdentifier id_cn_socialInsuranceNumber =
-        initOid(id_gmt0012_ext + ".1.2", "CN-SocialInsuranceNumber");
+        initOid(id_gmt0015_ext + ".1.2", "CN-SocialInsuranceNumber");
 
     public static final ASN1ObjectIdentifier id_cn_UnifiedSocialCreditCode =
-        initOid(id_gmt0012_ext + ".4.4", "CN-UnifiedSocialCreditCode");
+        initOid(id_gmt0015_ext + ".4.4", "CN-UnifiedSocialCreditCode");
 
   }
 
