@@ -15,7 +15,10 @@ See also <https://github.com/xipki/xipki/releases>
     - Social Insurance Number (1.2.156.10260.4.1.2)
     - Unified Social Credit Code  (1.2.156.10260.4.4)
 - Dependencies
-  - bcpqc-fips: 2.0.0 -> 2.1.0
+  - bcpqc-fips:  2.0.0  -> 2.1.0
+  - bcutil-fips: 2.1.5  -> 2.1.6
+  - bcpkix-fips: 2.1.10 -> 2.1.11
+  - jline:       4.0.9  -> 4.0.13
 
 ## 6.7.0
 - Release date: 2026/03/28
