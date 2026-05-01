@@ -3,6 +3,7 @@
 
 package org.xipki.security.pkix;
 
+import org.bouncycastle.asn1.ASN1Encodable;
 import org.bouncycastle.asn1.ASN1Encoding;
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
 import org.bouncycastle.asn1.DERBitString;
@@ -205,7 +206,8 @@ public class JceX509Certificate extends X509Certificate {
   @Override
   public byte[] getSigAlgParams() {
     try {
-      return cert.getTBSCertificate().getSignature().getParameters().toASN1Primitive().getEncoded();
+      ASN1Encodable asn1 = cert.getTBSCertificate().getSignature().getParameters();
+      return asn1 == null ? null : asn1.toASN1Primitive().getEncoded();
     } catch (IOException e) {
       throw new IllegalStateException(e);
     }

@@ -30,7 +30,6 @@ import javax.crypto.SecretKey;
 import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.PBEKeySpec;
-import javax.crypto.spec.SecretKeySpec;
 import java.io.BufferedInputStream;
 import java.io.EOFException;
 import java.io.IOException;
@@ -168,26 +167,21 @@ public class PKCS12KeyStore implements PKCSObjectIdentifiers, NISTObjectIdentifi
   }
 
   public String getCertificateAlias(Certificate cert) {
-    Enumeration<Certificate> c = certs.elements();
     Enumeration<String> k = certs.keys();
-
-    while (c.hasMoreElements()) {
-      Certificate tc = c.nextElement();
-      String ta = k.nextElement();
-      if (tc.equals(cert)) {
-        return ta;
+    while (k.hasMoreElements()) {
+      String alias = k.nextElement();
+      Certificate tc = certs.get(alias);
+      if (cert.equals(tc)) {
+        return alias;
       }
     }
 
-    c = keyCerts.elements();
     k = keyCerts.keys();
-
-    while (c.hasMoreElements()) {
-      Certificate tc = c.nextElement();
-      String ta = k.nextElement();
-
-      if (tc.equals(cert)) {
-        return ta;
+    while (k.hasMoreElements()) {
+      String alias = k.nextElement();
+      Certificate tc = keyCerts.get(alias);
+      if (cert.equals(tc)) {
+        return alias;
       }
     }
 
@@ -208,14 +202,16 @@ public class PKCS12KeyStore implements PKCSObjectIdentifiers, NISTObjectIdentifi
       while (c != null) {
         Certificate nextC = null;
 
-        ASN1Encodable extnValue = c.getTBSCertificate().getExtensions()
-            .getExtensionParsedValue(Extension.authorityKeyIdentifier);
-        if (extnValue != null) {
-          AuthorityKeyIdentifier aki = AuthorityKeyIdentifier.getInstance(extnValue);
+        Extensions exts = c.getTBSCertificate().getExtensions();
+        if (exts != null) {
+          ASN1Encodable extnValue = exts.getExtensionParsedValue(Extension.authorityKeyIdentifier);
+          if (extnValue != null) {
+            AuthorityKeyIdentifier aki = AuthorityKeyIdentifier.getInstance(extnValue);
 
-          byte[] keyID = Asn1Util.getKeyIdentifier(aki);
-          if (null != keyID) {
-            nextC = chainCerts.get(new CertId(keyID));
+            byte[] keyID = Asn1Util.getKeyIdentifier(aki);
+            if (keyID != null) {
+              nextC = chainCerts.get(new CertId(keyID));
+            }
           }
         }
 
@@ -336,20 +332,9 @@ public class PKCS12KeyStore implements PKCSObjectIdentifiers, NISTObjectIdentifi
 
   protected PrivateKeyInfo unwrapKey(AlgorithmIdentifier algId, byte[] data, char[] password)
       throws IOException {
-    ASN1ObjectIdentifier algorithm = algId.getAlgorithm();
     try {
-      Cipher cipher;
-      if (algorithm.on(pkcs_12PbeIds)) {
-        cipher = createPKCS12Cipher(Cipher.UNWRAP_MODE, password, algId);
-      } else if (algorithm.equals(id_PBES2)) {
-        cipher = createPBES2Cipher(Cipher.UNWRAP_MODE, password, algId);
-      } else {
-        throw new IOException("exception unwrapping private key - cannot recognize: " + algorithm);
-      }
-
-      // we pass "" as the key algorithm type as it is unknown at this point
-      byte[] bytes = cipher.unwrap(data, "", Cipher.SECRET_KEY).getEncoded();
-      return PrivateKeyInfo.getInstance(bytes);
+      byte[] bytes = cryptData(false, algId, password, data);
+      return PrivateKeyInfo.getInstance(ASN1Primitive.fromByteArray(bytes));
     } catch (IOException e) {
       throw e;
     } catch (final Exception e) {
@@ -359,19 +344,8 @@ public class PKCS12KeyStore implements PKCSObjectIdentifiers, NISTObjectIdentifi
 
   protected byte[] wrapKey(AlgorithmIdentifier algId, PrivateKeyInfo key, char[] password)
       throws IOException {
-    ASN1ObjectIdentifier algorithm = algId.getAlgorithm();
     try {
-      Cipher cipher;
-      if (algorithm.on(pkcs_12PbeIds)) {
-        cipher = createPKCS12Cipher(Cipher.WRAP_MODE, password, algId);
-      } else if (algorithm.equals(id_PBES2)) {
-        cipher = createPBES2Cipher(Cipher.WRAP_MODE, password, algId);
-      } else {
-        throw new IOException("exception unwrapping private key - cannot recognize: " + algorithm);
-      }
-
-      // we pass "" as the key algorithm type as it is unknown at this point
-      return cipher.wrap(new SecretKeySpec(key.getEncoded(), ""));
+      return cryptData(true, algId, password, key.getEncoded());
     } catch (IOException e) {
       throw e;
     } catch (final Exception e) {
@@ -422,16 +396,22 @@ public class PKCS12KeyStore implements PKCSObjectIdentifiers, NISTObjectIdentifi
     PBKDF2Params func = PBKDF2Params.getInstance(alg.getKeyDerivationFunc().getParameters());
     AlgorithmIdentifier encScheme = AlgorithmIdentifier.getInstance(alg.getEncryptionScheme());
 
+    int keySize = sizeProvider.getKeySize(encScheme);
+    if (keySize < 0) {
+      throw new NoSuchAlgorithmException(
+          "unknown key size for PBES2 encryption scheme " + encScheme.getAlgorithm());
+    }
+
     SecretKeyFactory keyFact = SecretKeyFactory.getInstance(
         alg.getKeyDerivationFunc().getAlgorithm().getId(), KeyUtil.tradProviderName());
     SecretKey key;
 
     if (func.isDefaultPrf()) {
       key = keyFact.generateSecret(new PBEKeySpec(password, func.getSalt(),
-          func.getIterationCount().intValue(), sizeProvider.getKeySize(encScheme) * 8));
+          func.getIterationCount().intValue(), keySize * 8));
     } else {
       key = keyFact.generateSecret(new PBKDF2KeySpec(password, func.getSalt(),
-          func.getIterationCount().intValue(), sizeProvider.getKeySize(encScheme) * 8,
+          func.getIterationCount().intValue(), keySize * 8,
           func.getPrf()));
     }
 
@@ -460,6 +440,8 @@ public class PKCS12KeyStore implements PKCSObjectIdentifiers, NISTObjectIdentifi
     if (password == null) {
       throw new NullPointerException("No password supplied for PKCS#12 KeyStore.");
     }
+
+    wrongPKCS12Zero = false;
 
     BufferedInputStream bufIn = new BufferedInputStream(stream);
     bufIn.mark(10);
@@ -520,6 +502,9 @@ public class PKCS12KeyStore implements PKCSObjectIdentifiers, NISTObjectIdentifi
 
     keys = new IgnoresCaseHashtable<>();
     localIds = new IgnoresCaseHashtable<>();
+    certs = new IgnoresCaseHashtable<>();
+    chainCerts = new Hashtable<>();
+    keyCerts = new Hashtable<>();
 
     if (info.getContentType().equals(data)) {
       bIn = new ASN1InputStream(Asn1Util.getOctetStringOctets(info.getContent()));
